@@ -132,7 +132,7 @@ class DC_FreeForm_GeoIP
 	function freeform_module_insert_begin($data) {
 		
 		// TODO: Replace this with a hook so that other modules can provide their search
-		$url = 'http://api.hostip.info/get_html.php?ip='. $data['ip_address'];
+		$url = 'http://api.hostip.info/get_html.php?ip=' . $data['ip_address'] . '&position=true';
 		
 		// get ip location data contents
 		$handle = @fopen($url, 'r');
@@ -173,7 +173,7 @@ class DC_FreeForm_GeoIP
 		$LANG->fetch_language_file('dc_freeform_geoip');
 		
 		// get the ip location data
-		$query = $DB->query("SELECT ip_location_data FROM exp_freeform_entries WHERE entry_id='".$DB->escape_str($IN->GBL('entry_id'))."'");
+		$query = $DB->query("SELECT ip_location_data, ip_address FROM exp_freeform_entries WHERE entry_id='".$DB->escape_str($IN->GBL('entry_id'))."'");
 
 		$ip_location_data = $query->row['ip_location_data'];
 	
@@ -187,12 +187,15 @@ class DC_FreeForm_GeoIP
 			
 			// replace line breaks with xhtml breaks
 			$ip_location_data = str_replace("\n", "<br />", $ip_location_data);
+
+			// html placeholder, a country flag could be added here
+			$location_html = $ip_location_data;
 	
 			$r = $DSP->td_c().$DSP->tr_c();
 			
 			$r .= $DSP->tr();
 			$r .= $DSP->table_qcell('tableCellOne', $DSP->qdiv('defaultBold', $LANG->line('ip_location_data')), '30%');
-			$r .= $DSP->table_qcell('tableCellOne', $DSP->qdiv('', $ip_location_data), '70%');
+			$r .= $DSP->table_qcell('tableCellOne', $DSP->qdiv('', $location_html), '70%');
 			$r .= $DSP->tr_c();
 			
 			//	=============================================
