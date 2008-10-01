@@ -34,11 +34,11 @@ class DC_FreeForm_GeoIP
 	var $name			= 'FreeForm GeoIP Extension';
 	var $version		= '1.0.0';
 	var $description	= 'Geocodes IPs to locations in Freeform.';
-	var $settings_exist	= 'n';
+	var $settings_exist = 'n';
 	var $docs_url		= '';
 
 	// -------------------------------
-	//  Constructor - Extensions use this for settings
+	//	Constructor - Extensions use this for settings
 	// -------------------------------
 	function DC_FreeForm_GeoIP($settings='')
 	{
@@ -46,7 +46,7 @@ class DC_FreeForm_GeoIP
 	}
 
 	// --------------------------------
-	//  Activate Extension
+	//	Activate Extension
 	// --------------------------------
 
 	function activate_extension()
@@ -88,7 +88,7 @@ class DC_FreeForm_GeoIP
 	}
 
 	// --------------------------------
-	//  Update Extension
+	//	Update Extension
 	// --------------------------------
 	function update_extension($current = '')
 	{
@@ -104,7 +104,7 @@ class DC_FreeForm_GeoIP
 	}
 
 	// --------------------------------
-	//  Disable Extension
+	//	Disable Extension
 	// --------------------------------
 	function disable_extension()
 	{
@@ -177,7 +177,7 @@ class DC_FreeForm_GeoIP
 
 		$ip_location_data = $query->row['ip_location_data'];
 	
-		// and show it only if it's set	
+		// and show it only if it's set 
 		if(!empty($ip_location_data))
 		{
 			//	=============================================
