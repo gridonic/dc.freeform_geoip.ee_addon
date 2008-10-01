@@ -1,4 +1,9 @@
 <?php
+function dprint_r($var, $title = '') {
+	echo('<pre>');
+	print_r($var);
+	echo('</pre>');
+}
 //SVN $Id$
 
 /*
@@ -32,9 +37,9 @@ class DC_FreeForm_GeoIP
 	var $settings		= array();
 
 	var $name			= 'FreeForm GeoIP Extension';
-	var $version		= '1.0.0';
+	var $version		= '1.0.1';
 	var $description	= 'Geocodes IPs to locations in Freeform.';
-	var $settings_exist = 'n';
+	var $settings_exist = 'y';
 	var $docs_url		= '';
 
 	// -------------------------------
@@ -52,11 +57,22 @@ class DC_FreeForm_GeoIP
 	function activate_extension()
 	{
 		global $DB;
+		
+		// default setting values
+		$append_data = 'no';
 
 		// hooks array
 		$hooks = array(
 			'freeform_module_insert_begin'		=> 'freeform_module_insert_begin',
+			'freeform_module_insert_end'		=> 'freeform_module_insert_end',
 			'show_full_control_panel_end'		=> 'display_form_entries'
+		);
+		
+		// default settings
+		$default_settings = serialize(
+			array(
+				'append_data'	=> $append_data
+			)
 		);
 
 		foreach ($hooks as $hook => $method)
@@ -67,7 +83,7 @@ class DC_FreeForm_GeoIP
 					'class'			=> get_class($this),
 					'method'		=> $method,
 					'hook'			=> $hook,
-					'settings'		=> '',
+					'settings'		=> $default_settings,
 					'priority'		=> 10,
 					'version'		=> $this->version,
 					'enabled'		=> 'y'
@@ -75,9 +91,15 @@ class DC_FreeForm_GeoIP
 			);
 		}
 		
-		// alter freeform entries table
-		$sql[] = "ALTER TABLE `exp_freeform_entries` ADD `ip_location_data` VARCHAR( 1024 ) NULL AFTER `ip_address`";
-
+		// add extension table
+		$sql[] = "CREATE TABLE `exp_dc_freeform_geoip` (
+			`id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			`entry_date` INT(10) NOT NULL,
+			`ip_address` VARCHAR(16) NOT NULL default '0',
+			`ip_location_data` TEXT NOT NULL DEFAULT ''
+		)";
+		$sql[] = 'ALTER TABLE `exp_dc_freeform_geoip` ADD UNIQUE `ENTRY_DATE` ( `entry_date` )';
+		
 		// run all sql queries
 		foreach ($sql as $query)
 		{
@@ -101,6 +123,42 @@ class DC_FreeForm_GeoIP
 		{
 			return FALSE;
 		}
+		
+		// Add insert_end hook if we have an older version
+		if ($current < '1.0.1')
+		{
+			// hooks array
+			$hooks = array(
+				'freeform_module_insert_end'		=> 'freeform_module_insert_end',
+			);
+
+			foreach ($hooks as $hook => $method)
+			{
+				$sql[] = $DB->insert_string( 'exp_extensions',
+					array(
+						'extension_id'	=> '',
+						'class'			=> get_class($this),
+						'method'		=> $method,
+						'hook'			=> $hook,
+						'settings'		=> '',
+						'priority'		=> 10,
+						'version'		=> $this->version,
+						'enabled'		=> 'y'
+					)
+				);
+			}
+		}
+		
+		//	=============================================
+		//	Update?
+		//	=============================================
+		$sql[] = "UPDATE exp_extensions SET version = '" . $DB->escape_str($this->version) . "' WHERE class = '" . get_class($this) . "'";
+		
+		// run all sql queries
+		foreach ($sql as $query)
+		{
+			$DB->query($query);
+		}
 	}
 
 	// --------------------------------
@@ -112,14 +170,25 @@ class DC_FreeForm_GeoIP
 		
 		$sql[] = "DELETE FROM exp_extensions WHERE class = '" . get_class($this) . "'";
 				
-		// remove custom column in freeform entries
-		$sql[] = "ALTER TABLE `exp_freeform_entries` DROP `ip_location_data`";
+		// remove extension table
+		$sql[] = "DROP TABLE IF EXISTS `exp_dc_freeform_geoip`";
 
 		// run all sql queries
 		foreach ($sql as $query)
 		{
 			$DB->query($query);
 		}
+	}
+
+	// --------------------------------
+	//	Extension Settings
+	// --------------------------------	
+	function settings() {
+		$settings = array();
+		
+	    $settings['append_data']   = array('s', array('yes' => "yes", 'no' => "no"), 'no');
+		
+		return $settings;
 	}
 
 	/**
@@ -131,6 +200,8 @@ class DC_FreeForm_GeoIP
 	 */
 	function freeform_module_insert_begin($data) {
 		
+		global $DB;
+		
 		// TODO: Replace this with a hook so that other modules can provide their search
 		$url = 'http://api.hostip.info/get_html.php?ip=' . $data['ip_address'] . '&position=true';
 		
@@ -139,8 +210,17 @@ class DC_FreeForm_GeoIP
 		$ip_location_data = stream_get_contents($handle);
 		@fclose($handle);
 		
+		dprint_r($data);
+		
+		// add geoip values based on the form entry_date and ip to the database
+		$DB->query("INSERT INTO exp_dc_freeform_geoip VALUES('', 
+			'".$DB->escape_str($data['entry_date'])."',
+			'".$DB->escape_str($data['ip_address'])."',
+			'".$DB->escape_str($ip_location_data)."'
+		)");
+		
 		// add to the array, this will be added to the database by freeform
-		$data['ip_location_data'] = $ip_location_data;
+		//$data['ip_location_data'] = $ip_location_data;
 		
 		return $data;
 	}
@@ -173,9 +253,14 @@ class DC_FreeForm_GeoIP
 		$LANG->fetch_language_file('dc_freeform_geoip');
 		
 		// get the ip location data
-		$query = $DB->query("SELECT ip_location_data, ip_address FROM exp_freeform_entries WHERE entry_id='".$DB->escape_str($IN->GBL('entry_id'))."'");
-
-		$ip_location_data = $query->row['ip_location_data'];
+		$query = $DB->query(
+			"SELECT g.ip_location_data, g.ip_address 
+			FROM exp_dc_freeform_geoip AS g 
+			INNER JOIN exp_freeform_entries AS f
+			ON g.entry_date = f.entry_date
+			WHERE f.entry_id='".$DB->escape_str($IN->GBL('entry_id'))."'");
+		
+		$ip_location_data = $this->_get_location_data($IN->GBL('entry_id'));
 
 		// and show it only if it's set 
 		if(!empty($ip_location_data))
@@ -205,6 +290,36 @@ class DC_FreeForm_GeoIP
 		}
 			
 		return $out;
+	}
+
+	function freeform_module_insert_end($fields, $entry_id, $msg)
+	{
+		$settings = $this->settings;
+		
+		dprint_r($entry_id);
+		dprint_r($this->settings);
+		
+		if ($settings['append_data'] == 'yes')
+		{
+			$msg['msg'] = "\n\n" .$this->_get_location_data($entry_id);
+		}
+		
+		dprint_r($msg);
+	}
+	
+	function _get_location_data($entry_id)
+	{
+		global $DB;
+		
+		// get the ip location data
+		$query = $DB->query(
+			"SELECT g.ip_location_data, g.ip_address 
+			FROM exp_dc_freeform_geoip AS g 
+			INNER JOIN exp_freeform_entries AS f
+			ON g.entry_date = f.entry_date
+			WHERE f.entry_id='".$DB->escape_str($entry_id)."'");
+
+		return $query->row['ip_location_data'];
 	}
 }
 //END CLASS
