@@ -144,7 +144,7 @@ class DC_FreeForm_GeoIP
 		
 		return $data;
 	}
-	
+
 	/**
 	 * Displays the location data for a freeform entry on a single entry page
 	 * based on the IP that was saved for that entry.
@@ -176,7 +176,7 @@ class DC_FreeForm_GeoIP
 		$query = $DB->query("SELECT ip_location_data, ip_address FROM exp_freeform_entries WHERE entry_id='".$DB->escape_str($IN->GBL('entry_id'))."'");
 
 		$ip_location_data = $query->row['ip_location_data'];
-	
+
 		// and show it only if it's set 
 		if(!empty($ip_location_data))
 		{
@@ -184,13 +184,13 @@ class DC_FreeForm_GeoIP
 			//	Find IP Address Row
 			//	=============================================
 			preg_match('/ip\ address.*?<\/tr>/si', $out, $row);
-			
+
 			// replace line breaks with xhtml breaks
 			$ip_location_data = str_replace("\n", "<br />", $ip_location_data);
 
 			// html placeholder, a country flag could be added here
 			$location_html = $ip_location_data;
-	
+
 			$r = $DSP->td_c().$DSP->tr_c();
 			
 			$r .= $DSP->tr();
