@@ -30,6 +30,9 @@ $L = array(
 	'append_data' =>
 	'Automatically append IP Location Data to notyfication emails',
 	
+	'check_updates' =>
+	'Check for updates',
+	
 	// END
 	''=>''
 );

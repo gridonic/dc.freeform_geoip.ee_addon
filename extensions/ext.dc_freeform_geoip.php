@@ -1,9 +1,4 @@
 <?php
-function dprint_r($var, $title = '') {
-	echo('<pre>');
-	print_r($var);
-	echo('</pre>');
-}
 //SVN $Id$
 
 /*
@@ -31,13 +26,19 @@ if (!defined('EXT'))
 	exit('Invalid file request');
 }
 
+// define id for this extension, used in LG_Addon_Updater
+if (!defined('DC_FGP_id'))
+{
+	define("DC_FGP_id",	"DC FreeForm GeoIP");
+}
+
 class DC_FreeForm_GeoIP
 {
 
 	var $settings		= array();
 
 	var $name			= 'FreeForm GeoIP Extension';
-	var $version		= '1.0.1';
+	var $version		= '1.0.2';
 	var $description	= 'Geocodes IPs to locations in Freeform.';
 	var $settings_exist = 'y';
 	var $docs_url		= '';
@@ -59,19 +60,23 @@ class DC_FreeForm_GeoIP
 		global $DB;
 		
 		// default setting values
-		$append_data = 'no';
+		$append_data 	= 'n';
+		$check_updates 	= 'y';
 
 		// hooks array
 		$hooks = array(
 			'freeform_module_insert_begin'		=> 'freeform_module_insert_begin',
 			'freeform_module_insert_end'		=> 'freeform_module_insert_end',
-			'show_full_control_panel_end'		=> 'display_form_entries'
+			'show_full_control_panel_end'		=> 'display_form_entries',
+			'lg_addon_update_register_source'	=> 'dc_freeform_geoip_register_source',
+			'lg_addon_update_register_addon'	=> 'dc_freeform_geoip_register_addon'
 		);
 		
 		// default settings
 		$default_settings = serialize(
 			array(
-				'append_data'	=> $append_data
+				'append_data'	=> $append_data,
+				'check_updates'	=> $check_updates
 			)
 		);
 
@@ -149,6 +154,32 @@ class DC_FreeForm_GeoIP
 			}
 		}
 		
+		// Add hooks for automatic updates using LG_Addon_Updater
+		if ($current < '1.0.2')
+		{
+			// hooks array
+			$hooks = array(
+				'lg_addon_update_register_source'	=> 'dc_freeform_geoip_register_source',
+				'lg_addon_update_register_addon'	=> 'dc_freeform_geoip_register_addon'
+			);
+
+			foreach ($hooks as $hook => $method)
+			{
+				$sql[] = $DB->insert_string('exp_extensions',
+					array(
+						'extension_id'	=> '',
+						'class'			=> get_class($this),
+						'method'		=> $method,
+						'hook'			=> $hook,
+						'settings'		=> '',
+						'priority'		=> 10,
+						'version'		=> $this->version,
+						'enabled'		=> 'y'
+					)
+				);
+			}
+		}
+		
 		//	=============================================
 		//	Update?
 		//	=============================================
@@ -186,7 +217,8 @@ class DC_FreeForm_GeoIP
 	function settings() {
 		$settings = array();
 		
-	    $settings['append_data']   = array('s', array('yes' => "yes", 'no' => "no"), 'no');
+	    $settings['append_data']   = array('s', array('y' => "yes", 'n' => "no"), 'n');
+	    $settings['check_updates']   = array('s', array('y' => "yes", 'n' => "no"), 'n');
 		
 		return $settings;
 	}
@@ -331,6 +363,63 @@ class DC_FreeForm_GeoIP
 			WHERE f.entry_id='" . $DB->escape_str($entry_id) .  "'");
 
 		return $query->row['ip_location_data'];
+	}
+	
+	/**
+	* Register a new Addon Source
+	*
+	* @param    array $sources The existing sources
+	* @return   array The new source list
+	* @since	version 1.0.2
+	*/
+	function dc_freeform_geoip_register_source($sources)
+	{
+	    global $EXT;
+	    // -- Check if we're not the only one using this hook
+	    if($EXT->last_call !== FALSE)
+	        $sources = $EXT->last_call;
+
+	    // add a new source
+	    // must be in the following format:
+	    /*
+	    <versions>
+	        <addon id='LG Addon Updater' version='2.0.0' last_updated="1218852797" docs_url="http://leevigraham.com/" />
+	    </versions>
+	    */
+	    if($this->settings['check_updates'] == 'y')
+	    {
+	        $sources[] = 'http://www.designchuchi.ch/versions.xml';
+	    }
+		
+	    return $sources;
+
+	}
+
+	/**
+	* Register a new Addon
+	*
+	* @param	array $addons The existing sources
+	* @return	array The new addon list
+	* @since	version 1.0.2
+	*/
+	function dc_freeform_geoip_register_addon($addons)
+	{
+		global $EXT;
+		
+		// -- Check if we're not the only one using this hook
+		if ($EXT->last_call !== FALSE)
+		{
+			$addons = $EXT->last_call;			
+		}
+
+		// add a new addon
+		// the key must match the id attribute in the source xml
+		// the value must be the addons current version
+		if($this->settings['check_updates'] == 'y')
+		{
+			$addons[DC_FGP_id] = $this->version;
+		}
+		return $addons;
 	}
 }
 //END CLASS
