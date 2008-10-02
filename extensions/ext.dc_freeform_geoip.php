@@ -77,7 +77,7 @@ class DC_FreeForm_GeoIP
 
 		foreach ($hooks as $hook => $method)
 		{
-			$sql[] = $DB->insert_string( 'exp_extensions',
+			$sql[] = $DB->insert_string('exp_extensions',
 				array(
 					'extension_id'	=> '',
 					'class'			=> get_class($this),
@@ -134,7 +134,7 @@ class DC_FreeForm_GeoIP
 
 			foreach ($hooks as $hook => $method)
 			{
-				$sql[] = $DB->insert_string( 'exp_extensions',
+				$sql[] = $DB->insert_string('exp_extensions',
 					array(
 						'extension_id'	=> '',
 						'class'			=> get_class($this),
@@ -206,21 +206,22 @@ class DC_FreeForm_GeoIP
 		$url = 'http://api.hostip.info/get_html.php?ip=' . $data['ip_address'] . '&position=true';
 		
 		// get ip location data contents
+		// This probably won't work on every host, we'll have to wait for bug reports
+		// and see what we can come up with.
 		$handle = @fopen($url, 'r');
 		$ip_location_data = stream_get_contents($handle);
 		@fclose($handle);
 		
-		dprint_r($data);
-		
 		// add geoip values based on the form entry_date and ip to the database
-		$DB->query("INSERT INTO exp_dc_freeform_geoip VALUES('', 
-			'".$DB->escape_str($data['entry_date'])."',
-			'".$DB->escape_str($data['ip_address'])."',
-			'".$DB->escape_str($ip_location_data)."'
-		)");
-		
-		// add to the array, this will be added to the database by freeform
-		//$data['ip_location_data'] = $ip_location_data;
+		$DB->query(
+			$DB->insert_string('exp_dc_freeform_geoip',
+				array(
+					'entry_date' 		=> $data['entry_date'],
+					'ip_address' 		=> $data['ip_address'],
+					'ip_location_data' 	=> $ip_location_data
+				)
+			)
+		);
 		
 		return $data;
 	}
@@ -258,7 +259,7 @@ class DC_FreeForm_GeoIP
 			FROM exp_dc_freeform_geoip AS g 
 			INNER JOIN exp_freeform_entries AS f
 			ON g.entry_date = f.entry_date
-			WHERE f.entry_id='".$DB->escape_str($IN->GBL('entry_id'))."'");
+			WHERE f.entry_id='" . $DB->escape_str($IN->GBL('entry_id')) . "'");
 		
 		$ip_location_data = $this->_get_location_data($IN->GBL('entry_id'));
 
@@ -292,32 +293,42 @@ class DC_FreeForm_GeoIP
 		return $out;
 	}
 
+	/**
+	 * Either appends the location data to the end of the message being sent out as a notification
+	 * or replaces the {ip_location_data} tag in that message.
+	 *
+	 * @see		freeform_module_insert_end hook
+	 * @since	Version 1.0.1
+	 */
 	function freeform_module_insert_end($fields, $entry_id, $msg)
 	{
 		$settings = $this->settings;
 		
-		dprint_r($entry_id);
-		dprint_r($this->settings);
-		
 		if ($settings['append_data'] == 'yes')
 		{
-			$msg['msg'] = "\n\n" .$this->_get_location_data($entry_id);
+			// This currently does not work because the hook provided by the freeform
+			// module sends the message out before the hook is being called. Let's hope Solspace corrects this.
+			// $msg['msg'] = $msg['msg'] . "\n\n" .$this->_get_location_data($entry_id);
 		}
-		
-		dprint_r($msg);
 	}
 	
+	/**
+	 * Private helper function to retrieve the ip_location_data
+	 * for a form entry saved by a previous hook during form submission.
+	 *
+	 * @since	Version 1.0.1
+	 */
 	function _get_location_data($entry_id)
 	{
 		global $DB;
 		
 		// get the ip location data
 		$query = $DB->query(
-			"SELECT g.ip_location_data, g.ip_address 
+			"SELECT g.ip_location_data 
 			FROM exp_dc_freeform_geoip AS g 
 			INNER JOIN exp_freeform_entries AS f
 			ON g.entry_date = f.entry_date
-			WHERE f.entry_id='".$DB->escape_str($entry_id)."'");
+			WHERE f.entry_id='" . $DB->escape_str($entry_id) .  "'");
 
 		return $query->row['ip_location_data'];
 	}
