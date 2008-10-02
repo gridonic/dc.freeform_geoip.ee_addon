@@ -355,6 +355,9 @@ class DC_FreeForm_GeoIP
 		global $DB;
 
 		// get the ip location data
+		// the connection between an entry_id and our location data is made through the entry_date
+		// this is somehow an ugly workaround but that's because we don't have other that entry_date
+		// to work with in the first freeform hook freeform_module_insert_begin we could use
 		$query = $DB->query(
 			"SELECT g.ip_location_data
 			FROM exp_dc_freeform_geoip AS g
@@ -362,7 +365,14 @@ class DC_FreeForm_GeoIP
 			ON g.entry_date = f.entry_date
 			WHERE f.entry_id='" . $DB->escape_str($entry_id) .  "'");
 
-		return $query->row['ip_location_data'];
+		// return location data if found
+		// after deactivating the extension, there will be no data for the former entries
+		if (isset($query->row['ip_location_data'])) 
+		{
+			return $query->row['ip_location_data'];
+		}
+		
+		return false;
 	}
 
 	/**
