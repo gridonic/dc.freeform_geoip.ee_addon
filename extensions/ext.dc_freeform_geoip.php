@@ -58,7 +58,7 @@ class DC_FreeForm_GeoIP
 	function activate_extension()
 	{
 		global $DB;
-		
+
 		// default setting values
 		$append_data 	= 'n';
 		$check_updates 	= 'y';
@@ -71,7 +71,7 @@ class DC_FreeForm_GeoIP
 			'lg_addon_update_register_source'	=> 'dc_freeform_geoip_register_source',
 			'lg_addon_update_register_addon'	=> 'dc_freeform_geoip_register_addon'
 		);
-		
+
 		// default settings
 		$default_settings = serialize(
 			array(
@@ -95,7 +95,7 @@ class DC_FreeForm_GeoIP
 				)
 			);
 		}
-		
+
 		// add extension table
 		$sql[] = "CREATE TABLE `exp_dc_freeform_geoip` (
 			`id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -104,7 +104,7 @@ class DC_FreeForm_GeoIP
 			`ip_location_data` TEXT NOT NULL DEFAULT ''
 		)";
 		$sql[] = 'ALTER TABLE `exp_dc_freeform_geoip` ADD UNIQUE `ENTRY_DATE` ( `entry_date` )';
-		
+
 		// run all sql queries
 		foreach ($sql as $query)
 		{
@@ -128,7 +128,7 @@ class DC_FreeForm_GeoIP
 		{
 			return FALSE;
 		}
-		
+
 		// Add insert_end hook if we have an older version
 		if ($current < '1.0.1')
 		{
@@ -153,7 +153,7 @@ class DC_FreeForm_GeoIP
 				);
 			}
 		}
-		
+
 		// Add hooks for automatic updates using LG_Addon_Updater
 		if ($current < '1.0.2')
 		{
@@ -179,12 +179,12 @@ class DC_FreeForm_GeoIP
 				);
 			}
 		}
-		
+
 		//	=============================================
 		//	Update?
 		//	=============================================
 		$sql[] = "UPDATE exp_extensions SET version = '" . $DB->escape_str($this->version) . "' WHERE class = '" . get_class($this) . "'";
-		
+
 		// run all sql queries
 		foreach ($sql as $query)
 		{
@@ -198,9 +198,9 @@ class DC_FreeForm_GeoIP
 	function disable_extension()
 	{
 		global $DB;
-		
+
 		$sql[] = "DELETE FROM exp_extensions WHERE class = '" . get_class($this) . "'";
-				
+
 		// remove extension table
 		$sql[] = "DROP TABLE IF EXISTS `exp_dc_freeform_geoip`";
 
@@ -213,37 +213,37 @@ class DC_FreeForm_GeoIP
 
 	// --------------------------------
 	//	Extension Settings
-	// --------------------------------	
+	// --------------------------------
 	function settings() {
 		$settings = array();
-		
+
 	    $settings['append_data']   = array('s', array('y' => "yes", 'n' => "no"), 'n');
 	    $settings['check_updates']   = array('s', array('y' => "yes", 'n' => "no"), 'n');
-		
+
 		return $settings;
 	}
 
 	/**
-	 * Retrieves the location data from this provider http://www.hostip.info/use.html 
+	 * Retrieves the location data from this provider http://www.hostip.info/use.html
 	 * and saves it into the database upon a form submission.
 	 *
 	 * @see		freeform_module_insert_begin hook
 	 * @since	Version 1.0.0
 	 */
 	function freeform_module_insert_begin($data) {
-		
+
 		global $DB;
-		
+
 		// TODO: Replace this with a hook so that other modules can provide their search
 		$url = 'http://api.hostip.info/get_html.php?ip=' . $data['ip_address'] . '&position=true';
-		
+
 		// get ip location data contents
 		// This probably won't work on every host, we'll have to wait for bug reports
 		// and see what we can come up with.
 		$handle = @fopen($url, 'r');
 		$ip_location_data = stream_get_contents($handle);
 		@fclose($handle);
-		
+
 		// add geoip values based on the form entry_date and ip to the database
 		$DB->query(
 			$DB->insert_string('exp_dc_freeform_geoip',
@@ -254,7 +254,7 @@ class DC_FreeForm_GeoIP
 				)
 			)
 		);
-		
+
 		return $data;
 	}
 
@@ -273,7 +273,7 @@ class DC_FreeForm_GeoIP
 		{
 			$out = $EXT->last_call;
 		}
-		
+
 		//	=============================================
 		//	Only do this on the freeform entries page
 		//	=============================================
@@ -281,21 +281,21 @@ class DC_FreeForm_GeoIP
 		{
 			return $out;
 		}
-		
+
 		//	now we can fetch the language file
 		$LANG->fetch_language_file('dc_freeform_geoip');
-		
+
 		// get the ip location data
 		$query = $DB->query(
-			"SELECT g.ip_location_data, g.ip_address 
-			FROM exp_dc_freeform_geoip AS g 
+			"SELECT g.ip_location_data, g.ip_address
+			FROM exp_dc_freeform_geoip AS g
 			INNER JOIN exp_freeform_entries AS f
 			ON g.entry_date = f.entry_date
 			WHERE f.entry_id='" . $DB->escape_str($IN->GBL('entry_id')) . "'");
-		
+
 		$ip_location_data = $this->_get_location_data($IN->GBL('entry_id'));
 
-		// and show it only if it's set 
+		// and show it only if it's set
 		if(!empty($ip_location_data))
 		{
 			//	=============================================
@@ -310,18 +310,18 @@ class DC_FreeForm_GeoIP
 			$location_html = $ip_location_data;
 
 			$r = $DSP->td_c().$DSP->tr_c();
-			
+
 			$r .= $DSP->tr();
 			$r .= $DSP->table_qcell('tableCellOne', $DSP->qdiv('defaultBold', $LANG->line('ip_location_data')), '30%');
 			$r .= $DSP->table_qcell('tableCellOne', $DSP->qdiv('', $location_html), '70%');
 			$r .= $DSP->tr_c();
-			
+
 			//	=============================================
 			//	Add Row
 			//	=============================================
 			$out = @str_replace($row[0], $row[0].$r, $out);
 		}
-			
+
 		return $out;
 	}
 
@@ -335,7 +335,7 @@ class DC_FreeForm_GeoIP
 	function freeform_module_insert_end($fields, $entry_id, $msg)
 	{
 		$settings = $this->settings;
-		
+
 		if ($settings['append_data'] == 'yes')
 		{
 			// This currently does not work because the hook provided by the freeform
@@ -343,7 +343,7 @@ class DC_FreeForm_GeoIP
 			// $msg['msg'] = $msg['msg'] . "\n\n" .$this->_get_location_data($entry_id);
 		}
 	}
-	
+
 	/**
 	 * Private helper function to retrieve the ip_location_data
 	 * for a form entry saved by a previous hook during form submission.
@@ -353,18 +353,18 @@ class DC_FreeForm_GeoIP
 	function _get_location_data($entry_id)
 	{
 		global $DB;
-		
+
 		// get the ip location data
 		$query = $DB->query(
-			"SELECT g.ip_location_data 
-			FROM exp_dc_freeform_geoip AS g 
+			"SELECT g.ip_location_data
+			FROM exp_dc_freeform_geoip AS g
 			INNER JOIN exp_freeform_entries AS f
 			ON g.entry_date = f.entry_date
 			WHERE f.entry_id='" . $DB->escape_str($entry_id) .  "'");
 
 		return $query->row['ip_location_data'];
 	}
-	
+
 	/**
 	* Register a new Addon Source
 	*
@@ -375,22 +375,17 @@ class DC_FreeForm_GeoIP
 	function dc_freeform_geoip_register_source($sources)
 	{
 	    global $EXT;
+
 	    // -- Check if we're not the only one using this hook
 	    if($EXT->last_call !== FALSE)
 	        $sources = $EXT->last_call;
 
 	    // add a new source
-	    // must be in the following format:
-	    /*
-	    <versions>
-	        <addon id='LG Addon Updater' version='2.0.0' last_updated="1218852797" docs_url="http://leevigraham.com/" />
-	    </versions>
-	    */
 	    if($this->settings['check_updates'] == 'y')
 	    {
 	        $sources[] = 'http://www.designchuchi.ch/versions.xml';
 	    }
-		
+
 	    return $sources;
 
 	}
@@ -405,12 +400,10 @@ class DC_FreeForm_GeoIP
 	function dc_freeform_geoip_register_addon($addons)
 	{
 		global $EXT;
-		
+
 		// -- Check if we're not the only one using this hook
 		if ($EXT->last_call !== FALSE)
-		{
-			$addons = $EXT->last_call;			
-		}
+			$addons = $EXT->last_call;
 
 		// add a new addon
 		// the key must match the id attribute in the source xml
