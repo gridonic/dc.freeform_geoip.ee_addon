@@ -29,7 +29,7 @@ if (!defined('EXT'))
 // define id for this extension, used in LG_Addon_Updater
 if (!defined('DC_FGP_id'))
 {
-	define("DC_FGP_id",	"DC FreeForm GeoIP");
+	define("DC_FGP_id", "DC FreeForm GeoIP");
 }
 
 class DC_FreeForm_GeoIP
@@ -60,8 +60,8 @@ class DC_FreeForm_GeoIP
 		global $DB;
 
 		// default setting values
-		$append_data 	= 'n';
-		$check_updates 	= 'y';
+		$append_data	= 'n';
+		$check_updates	= 'y';
 
 		// hooks array
 		$hooks = array(
@@ -76,7 +76,7 @@ class DC_FreeForm_GeoIP
 		$default_settings = serialize(
 			array(
 				'append_data'	=> $append_data,
-				'check_updates'	=> $check_updates
+				'check_updates' => $check_updates
 			)
 		);
 
@@ -217,8 +217,8 @@ class DC_FreeForm_GeoIP
 	function settings() {
 		$settings = array();
 
-	    $settings['append_data']   = array('s', array('y' => "yes", 'n' => "no"), 'n');
-	    $settings['check_updates']   = array('s', array('y' => "yes", 'n' => "no"), 'n');
+		$settings['append_data']   = array('s', array('y' => "yes", 'n' => "no"), 'n');
+		$settings['check_updates']	 = array('s', array('y' => "yes", 'n' => "no"), 'n');
 
 		return $settings;
 	}
@@ -240,6 +240,8 @@ class DC_FreeForm_GeoIP
 		// get ip location data contents
 		// This probably won't work on every host, we'll have to wait for bug reports
 		// and see what we can come up with.
+		// TODO: Get bug reports and see if this works for users
+		// FIXME: Use alternative function(s) for this.
 		$handle = @fopen($url, 'r');
 		$ip_location_data = stream_get_contents($handle);
 		@fclose($handle);
@@ -248,9 +250,9 @@ class DC_FreeForm_GeoIP
 		$DB->query(
 			$DB->insert_string('exp_dc_freeform_geoip',
 				array(
-					'entry_date' 		=> $data['entry_date'],
-					'ip_address' 		=> $data['ip_address'],
-					'ip_location_data' 	=> $ip_location_data
+					'entry_date'		=> $data['entry_date'],
+					'ip_address'		=> $data['ip_address'],
+					'ip_location_data'	=> $ip_location_data
 				)
 			)
 		);
@@ -343,6 +345,61 @@ class DC_FreeForm_GeoIP
 			// $msg['msg'] = $msg['msg'] . "\n\n" .$this->_get_location_data($entry_id);
 		}
 	}
+	
+	/**
+	 * TODO: Recode this function.
+	 */
+	function _geocode_ip($ip_address)
+	{
+		$url = "http://api.hostip.info/get_html.php?ip=$ip_address&position=true";
+		$ch = curl_init();	  // initialize curl handle
+		curl_setopt($ch, CURLOPT_URL,$url); // set url to post to
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER,1); // return into a variable
+		curl_setopt($ch, CURLOPT_TIMEOUT, 4); // times out after 4s
+		curl_setopt($ch, CURLOPT_POSTFIELDS, $XPost); // add POST fields
+		$result = curl_exec($ch); // run the whole process
+
+		$find_string = "Country:";
+		$start = strpos($result,$find_string);
+		if ($start != false){
+				$start = strpos($result,$find_string);
+				$line_end = strpos($result,"\n",$start) - strlen($find_string) - $start;
+				$geocode['country'] = trim(substr($result,$start + strlen($find_string),$line_end));
+		}
+
+		$find_string = "City:";
+		$start = strpos($result,$find_string);
+		if ($start != false){
+				$line_end = strpos($result,"\n",$start) - strlen($find_string) - $start;
+				$city_state = trim(substr($result,$start + strlen($find_string),$line_end));
+				$geocode['city'] = trim(substr($city_state,0,strpos($city_state,",")));
+				$geocode['state'] = trim(substr($city_state,strpos($city_state,",")+1));
+		}
+
+		$find_string = "Latitude:";
+		$start = strpos($result,$find_string);
+		if ($start != false){
+				$line_end = strpos($result,"\n",$start) - strlen($find_string) - $start;
+				$geocode['latitude'] = trim(substr($result,$start + strlen($find_string),$line_end));
+		}
+
+		$find_string = "Longitude:";
+		$start = strpos($result,$find_string);
+		if ($start != false){
+				$line_end = strpos($result,"\n",$start) - strlen($find_string) - $start;
+				$geocode['latitude'] = trim(substr($result,$start + strlen($find_string),$line_end));
+		}
+
+		$find_string = "Longitude:";
+		$start = strpos($result,$find_string);
+		if ($start != false){
+				$line_end = strpos($result,"\n",$start) - strlen($find_string) - $start;
+				if ($line_end <= 0) $line_end = strlen($result) - $start - strlen($find_string);
+				$geocode['longitude'] = trim(substr($result,$start + strlen($find_string),$line_end));
+		}
+		
+		return $geocode;
+	}
 
 	/**
 	 * Private helper function to retrieve the ip_location_data
@@ -363,7 +420,7 @@ class DC_FreeForm_GeoIP
 			FROM exp_dc_freeform_geoip AS g
 			INNER JOIN exp_freeform_entries AS f
 			ON g.entry_date = f.entry_date
-			WHERE f.entry_id='" . $DB->escape_str($entry_id) .  "'");
+			WHERE f.entry_id='" . $DB->escape_str($entry_id) .	"'");
 
 		// return location data if found
 		// after deactivating the extension, there will be no data for the former entries
@@ -378,25 +435,25 @@ class DC_FreeForm_GeoIP
 	/**
 	* Register a new Addon Source
 	*
-	* @param    array $sources The existing sources
-	* @return   array The new source list
+	* @param	array $sources The existing sources
+	* @return	array The new source list
 	* @since	version 1.0.2
 	*/
 	function dc_freeform_geoip_register_source($sources)
 	{
-	    global $EXT;
+		global $EXT;
 
-	    // -- Check if we're not the only one using this hook
-	    if($EXT->last_call !== FALSE)
-	        $sources = $EXT->last_call;
+		// -- Check if we're not the only one using this hook
+		if($EXT->last_call !== FALSE)
+			$sources = $EXT->last_call;
 
-	    // add a new source
-	    if($this->settings['check_updates'] == 'y')
-	    {
-	        $sources[] = 'http://www.designchuchi.ch/versions.xml';
-	    }
+		// add a new source
+		if($this->settings['check_updates'] == 'y')
+		{
+			$sources[] = 'http://www.designchuchi.ch/versions.xml';
+		}
 
-	    return $sources;
+		return $sources;
 
 	}
 
