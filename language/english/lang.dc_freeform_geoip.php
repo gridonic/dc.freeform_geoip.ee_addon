@@ -32,6 +32,13 @@ $L = array(
 
 	'check_updates' =>
 	'Check for updates',
+	
+	// ERRORS
+	'freeform_not_found' =>
+	'This extension requires the Solspace Freeform module.<br /><br />Please visit the <a href="http://www.solspace.com/software/detail/freeform/">Solspace Website</a> for further information.',
+	
+	'freeform_old_version' =>
+	'This extension requires at least version %{version} of the Solspace Freeform module.<br /><br />Please visit the <a href="http://www.solspace.com/software/detail/freeform/">Solspace Website</a> for further information.',
 
 	// END
 	''=>''

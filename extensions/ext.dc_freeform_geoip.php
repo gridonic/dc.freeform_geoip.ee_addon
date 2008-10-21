@@ -1,6 +1,10 @@
 <?php
 //SVN $Id$
-
+function dprint_r($var) {
+	echo('<pre>');
+	print_r($var);
+	echo('</pre>');
+}
 /*
 =====================================================
 DC FreeForm GeoIP
@@ -27,9 +31,9 @@ if (!defined('EXT'))
 }
 
 // define id for this extension, used in LG_Addon_Updater
-if (!defined('DC_FGP_id'))
+if (!defined('DC_FREEFORM_ID'))
 {
-	define("DC_FGP_id", "DC FreeForm GeoIP");
+	define("DC_FREEFORM_ID", "DC FreeForm GeoIP");
 }
 
 class DC_FreeForm_GeoIP
@@ -38,10 +42,12 @@ class DC_FreeForm_GeoIP
 	var $settings		= array();
 
 	var $name			= 'FreeForm GeoIP Extension';
-	var $version		= '1.0.2';
+	var $version		= '1.0.3';
 	var $description	= 'Geocodes IPs to locations in Freeform.';
 	var $settings_exist = 'y';
 	var $docs_url		= '';
+	
+	var $freeform_ver   = '2.6.6';
 
 	// -------------------------------
 	//	Constructor - Extensions use this for settings
@@ -57,7 +63,22 @@ class DC_FreeForm_GeoIP
 
 	function activate_extension()
 	{
-		global $DB;
+		global $DB, $OUT, $LANG;
+		
+		// fetch language
+		$LANG->fetch_language_file('dc_freeform_geoip');
+
+		// check if the FreeForm module is available
+		$freeform_check = $DB->query("SELECT module_version FROM exp_modules WHERE module_name = 'Freeform'");
+		if ($freeform_check->num_rows < 1)
+		{
+			$OUT->fatal_error($LANG->line('freeform_not_found'));
+			return;
+		}
+		else if ($freeform_check->row['module_version'] < $this->freeform_ver) {
+       	    $OUT->fatal_error(str_replace('%{version}', $this->freeform_ver, $LANG->line('freeform_old_version')));
+			return;
+       	}
 
 		// default setting values
 		$append_data	= 'n';
@@ -65,11 +86,11 @@ class DC_FreeForm_GeoIP
 
 		// hooks array
 		$hooks = array(
-			'freeform_module_insert_begin'		=> 'freeform_module_insert_begin',
-			'freeform_module_insert_end'		=> 'freeform_module_insert_end',
-			'show_full_control_panel_end'		=> 'display_form_entries',
-			'lg_addon_update_register_source'	=> 'dc_freeform_geoip_register_source',
-			'lg_addon_update_register_addon'	=> 'dc_freeform_geoip_register_addon'
+			'freeform_module_insert_begin'		 => 'freeform_module_insert_begin',
+			'freeform_module_admin_notification' => 'freeform_module_admin_notification',
+			'show_full_control_panel_end'		 => 'display_form_entries',
+			'lg_addon_update_register_source'	 => 'dc_freeform_geoip_register_source',
+			'lg_addon_update_register_addon'	 => 'dc_freeform_geoip_register_addon'
 		);
 
 		// default settings
@@ -127,31 +148,6 @@ class DC_FreeForm_GeoIP
 		if ($current == '' OR $current == $this->version)
 		{
 			return FALSE;
-		}
-
-		// Add insert_end hook if we have an older version
-		if ($current < '1.0.1')
-		{
-			// hooks array
-			$hooks = array(
-				'freeform_module_insert_end'		=> 'freeform_module_insert_end',
-			);
-
-			foreach ($hooks as $hook => $method)
-			{
-				$sql[] = $DB->insert_string('exp_extensions',
-					array(
-						'extension_id'	=> '',
-						'class'			=> get_class($this),
-						'method'		=> $method,
-						'hook'			=> $hook,
-						'settings'		=> '',
-						'priority'		=> 10,
-						'version'		=> $this->version,
-						'enabled'		=> 'y'
-					)
-				);
-			}
 		}
 
 		// Add hooks for automatic updates using LG_Addon_Updater
@@ -234,17 +230,8 @@ class DC_FreeForm_GeoIP
 
 		global $DB;
 
-		// TODO: Replace this with a hook so that other modules can provide their search
-		$url = 'http://api.hostip.info/get_html.php?ip=' . $data['ip_address'] . '&position=true';
-
-		// get ip location data contents
-		// This probably won't work on every host, we'll have to wait for bug reports
-		// and see what we can come up with.
-		// TODO: Get bug reports and see if this works for users
-		// FIXME: Use alternative function(s) for this.
-		$handle = @fopen($url, 'r');
-		$ip_location_data = stream_get_contents($handle);
-		@fclose($handle);
+		// use the geocode hook to retrieve the location data for an IP
+		$ip_location_data = $this->_hostip_geocode($data['ip_address']);
 
 		// add geoip values based on the form entry_date and ip to the database
 		$DB->query(
@@ -258,6 +245,25 @@ class DC_FreeForm_GeoIP
 		);
 
 		return $data;
+	}
+	
+	/**
+	 * Hook for geocoding an IP. Custom extensions can use this to override this
+	 * extensions default geocoding behaviour.
+	 *
+	 * @since   Version 1.0.3
+	 */
+	function dc_freeform_geocode_ip($ip) {
+		global $EXT;
+
+		// -- Check if we're not the only one using this hook
+		if($EXT->last_call !== FALSE)
+		{
+			return $EXT->last_call;
+		}
+		
+		// if noone else is using this hook, use the internal function
+		return $this->_hostip_geocode($data['ip_address']);
 	}
 
 	/**
@@ -334,73 +340,26 @@ class DC_FreeForm_GeoIP
 	 * @see		freeform_module_insert_end hook
 	 * @since	Version 1.0.1
 	 */
-	function freeform_module_insert_end($fields, $entry_id, $msg)
+	function freeform_module_admin_notification($fields, $entry_id, $msg)
 	{
-		$settings = $this->settings;
-
-		if ($settings['append_data'] == 'yes')
+    	$settings = $this->settings;
+		$location_data = $this->_get_location_data($entry_id);
+		
+		if ($settings['append_data'] == 'y')
 		{
 			// This currently does not work because the hook provided by the freeform
 			// module sends the message out before the hook is being called. Let's hope Solspace corrects this.
-			// $msg['msg'] = $msg['msg'] . "\n\n" .$this->_get_location_data($entry_id);
+			$msg['msg'] = $msg['msg'] . "\n\n" . $location_data;
 		}
-	}
-	
-	/**
-	 * TODO: Recode this function.
-	 */
-	function _geocode_ip($ip_address)
-	{
-		$url = "http://api.hostip.info/get_html.php?ip=$ip_address&position=true";
-		$ch = curl_init();	  // initialize curl handle
-		curl_setopt($ch, CURLOPT_URL,$url); // set url to post to
-		curl_setopt($ch, CURLOPT_RETURNTRANSFER,1); // return into a variable
-		curl_setopt($ch, CURLOPT_TIMEOUT, 4); // times out after 4s
-		curl_setopt($ch, CURLOPT_POSTFIELDS, $XPost); // add POST fields
-		$result = curl_exec($ch); // run the whole process
-
-		$find_string = "Country:";
-		$start = strpos($result,$find_string);
-		if ($start != false){
-				$start = strpos($result,$find_string);
-				$line_end = strpos($result,"\n",$start) - strlen($find_string) - $start;
-				$geocode['country'] = trim(substr($result,$start + strlen($find_string),$line_end));
-		}
-
-		$find_string = "City:";
-		$start = strpos($result,$find_string);
-		if ($start != false){
-				$line_end = strpos($result,"\n",$start) - strlen($find_string) - $start;
-				$city_state = trim(substr($result,$start + strlen($find_string),$line_end));
-				$geocode['city'] = trim(substr($city_state,0,strpos($city_state,",")));
-				$geocode['state'] = trim(substr($city_state,strpos($city_state,",")+1));
-		}
-
-		$find_string = "Latitude:";
-		$start = strpos($result,$find_string);
-		if ($start != false){
-				$line_end = strpos($result,"\n",$start) - strlen($find_string) - $start;
-				$geocode['latitude'] = trim(substr($result,$start + strlen($find_string),$line_end));
-		}
-
-		$find_string = "Longitude:";
-		$start = strpos($result,$find_string);
-		if ($start != false){
-				$line_end = strpos($result,"\n",$start) - strlen($find_string) - $start;
-				$geocode['latitude'] = trim(substr($result,$start + strlen($find_string),$line_end));
-		}
-
-		$find_string = "Longitude:";
-		$start = strpos($result,$find_string);
-		if ($start != false){
-				$line_end = strpos($result,"\n",$start) - strlen($find_string) - $start;
-				if ($line_end <= 0) $line_end = strlen($result) - $start - strlen($find_string);
-				$geocode['longitude'] = trim(substr($result,$start + strlen($find_string),$line_end));
+		// else try to replace
+		else
+		{
+			$msg['msg'] = str_replace(LD.'ip_location_data'.RD, $location_data, $msg['msg']);
 		}
 		
-		return $geocode;
+		return $msg;
 	}
-
+	
 	/**
 	 * Private helper function to retrieve the ip_location_data
 	 * for a form entry saved by a previous hook during form submission.
@@ -431,6 +390,24 @@ class DC_FreeForm_GeoIP
 		
 		return false;
 	}
+	
+	/**
+	 * Quick and dirty parser of the hostip.info API data.
+	 *
+	 * @since	Version 1.0.3
+	 */
+	function _hostip_geocode($ip_address)
+	{
+        $url = "http://api.hostip.info/get_html.php?ip=$ip_address&position=true";
+        $ch = curl_init();    // initialize curl handle
+        curl_setopt($ch, CURLOPT_URL, $url); // set url to post to
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); // return into a variable
+        curl_setopt($ch, CURLOPT_TIMEOUT, 4); // times out after 4s
+        $result = curl_exec($ch); // run the whole process
+        curl_close($ch);
+        
+        return $result;
+	}
 
 	/**
 	* Register a new Addon Source
@@ -454,7 +431,6 @@ class DC_FreeForm_GeoIP
 		}
 
 		return $sources;
-
 	}
 
 	/**
@@ -477,7 +453,7 @@ class DC_FreeForm_GeoIP
 		// the value must be the addons current version
 		if($this->settings['check_updates'] == 'y')
 		{
-			$addons[DC_FGP_id] = $this->version;
+			$addons[DC_FREEFORM_ID] = $this->version;
 		}
 		return $addons;
 	}
