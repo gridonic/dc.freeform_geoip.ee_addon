@@ -40,7 +40,7 @@ class DC_FreeForm_GeoIP
 	var $version		= '1.0.3';
 	var $description	= 'Geocodes IPs to locations in Freeform.';
 	var $settings_exist = 'y';
-	var $docs_url		= '';
+	var $docs_url		= 'http://www.designchuchi.ch/index.php/blog/comments/dc-freeform-geoip-extension';
 	
 	var $freeform_ver   = '2.6.6';
 
