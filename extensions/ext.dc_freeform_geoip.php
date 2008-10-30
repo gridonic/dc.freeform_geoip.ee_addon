@@ -1,10 +1,5 @@
 <?php
 //SVN $Id$
-function dprint_r($var) {
-	echo('<pre>');
-	print_r($var);
-	echo('</pre>');
-}
 /*
 =====================================================
 DC FreeForm GeoIP
@@ -41,7 +36,7 @@ class DC_FreeForm_GeoIP
 
 	var $settings		= array();
 
-	var $name			= 'FreeForm GeoIP Extension';
+	var $name			= 'DC FreeForm GeoIP Extension';
 	var $version		= '1.0.3';
 	var $description	= 'Geocodes IPs to locations in Freeform.';
 	var $settings_exist = 'y';
@@ -228,10 +223,23 @@ class DC_FreeForm_GeoIP
 	 */
 	function freeform_module_insert_begin($data) {
 
-		global $DB;
-
-		// use the geocode hook to retrieve the location data for an IP
-		$ip_location_data = $this->_hostip_geocode($data['ip_address']);
+		global $DB, $EXT;
+		
+		/**	----------------------------------------------------
+		 *	"dc_freeform_geocode_ip" hook
+		 *	----------------------------------------------------
+		 *	Allow developers to add their own ip location data
+		 *	--------------------------------------------------*/
+		if ($EXT->active_hook('dc_freeform_geocode_ip') === TRUE)
+		{
+			$ip_location_data = $EXT->call_extension('dc_freeform_geocode_ip', $data['ip_address']);
+			if ($EXT->end_script === TRUE) return;
+		}
+		else
+		{
+			// if no hook is present, query a database ourselves
+			$ip_location_data = $this->_hostip_geocode($data['ip_address']);
+		}
 
 		// add geoip values based on the form entry_date and ip to the database
 		$DB->query(
@@ -246,30 +254,12 @@ class DC_FreeForm_GeoIP
 
 		return $data;
 	}
-	
-	/**
-	 * Hook for geocoding an IP. Custom extensions can use this to override this
-	 * extensions default geocoding behaviour.
-	 *
-	 * @since   Version 1.0.3
-	 */
-	function dc_freeform_geocode_ip($ip) {
-		global $EXT;
-
-		// -- Check if we're not the only one using this hook
-		if($EXT->last_call !== FALSE)
-		{
-			return $EXT->last_call;
-		}
-		
-		// if noone else is using this hook, use the internal function
-		return $this->_hostip_geocode($data['ip_address']);
-	}
 
 	/**
 	 * Displays the location data for a freeform entry on a single entry page
 	 * based on the IP that was saved for that entry.
 	 *
+	 * @param	string 		$out 	The entire html output of the control panel page.
 	 * @see		show_full_control_panel_end hook
 	 * @since	Version 1.0.0
 	 */
@@ -337,6 +327,9 @@ class DC_FreeForm_GeoIP
 	 * Either appends the location data to the end of the message being sent out as a notification
 	 * or replaces the {ip_location_data} tag in that message.
 	 *
+	 * @param	array 	$fields		All submitted form fields.
+	 * @param	int		$entry_id	The entry id of the form.
+	 * @param	array 	$msg		An array containing the message from the form.
 	 * @see		freeform_module_insert_end hook
 	 * @since	Version 1.0.1
 	 */
@@ -364,6 +357,7 @@ class DC_FreeForm_GeoIP
 	 * Private helper function to retrieve the ip_location_data
 	 * for a form entry saved by a previous hook during form submission.
 	 *
+	 * @param	int		$entry_id	An entry_id of a freeform entry.
 	 * @since	Version 1.0.1
 	 */
 	function _get_location_data($entry_id)
@@ -394,6 +388,7 @@ class DC_FreeForm_GeoIP
 	/**
 	 * Quick and dirty parser of the hostip.info API data.
 	 *
+	 * @param	string	$ip_address	An ip address string to geocode.
 	 * @since	Version 1.0.3
 	 */
 	function _hostip_geocode($ip_address)
@@ -406,7 +401,8 @@ class DC_FreeForm_GeoIP
         $result = curl_exec($ch); // run the whole process
         curl_close($ch);
         
-        return $result;
+		$ip_string = 'IP Address: ' . $ip_address . "\n";
+        return $ip_string . $result;
 	}
 
 	/**
